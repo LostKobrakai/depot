@@ -1,7 +1,12 @@
 defmodule Depot.Adapter.LocalTest do
   use ExUnit.Case, async: true
+  use Bitwise, only_operators: true
   import Depot.AdapterTest
   doctest Depot.Adapter.Local
+
+  def match_mode(input, match) do
+    (input &&& 0o777) == match
+  end
 
   setup do
     {:ok, prefix} = Briefly.create(directory: true)
@@ -17,7 +22,7 @@ defmodule Depot.Adapter.LocalTest do
     test "success", %{prefix: prefix} do
       {_, config} = Depot.Adapter.Local.configure(prefix: prefix)
 
-      :ok = Depot.Adapter.Local.write(config, "test.txt", "Hello World")
+      :ok = Depot.Adapter.Local.write(config, "test.txt", "Hello World", [])
 
       assert {:ok, "Hello World"} = File.read(Path.join(prefix, "test.txt"))
     end
@@ -25,7 +30,7 @@ defmodule Depot.Adapter.LocalTest do
     test "folders are automatically created is missing", %{prefix: prefix} do
       {_, config} = Depot.Adapter.Local.configure(prefix: prefix)
 
-      :ok = Depot.Adapter.Local.write(config, "folder/test.txt", "Hello World")
+      :ok = Depot.Adapter.Local.write(config, "folder/test.txt", "Hello World", [])
 
       assert {:ok, "Hello World"} = File.read(Path.join(prefix, "folder/test.txt"))
     end
@@ -52,6 +57,40 @@ defmodule Depot.Adapter.LocalTest do
       Enum.into(["Hello", " ", "World"], stream)
 
       assert {:ok, "Hello World"} = File.read(Path.join(prefix, "test.txt"))
+    end
+
+    test "default visibility", %{prefix: prefix} do
+      {_, config} = Depot.Adapter.Local.configure(prefix: prefix)
+
+      :ok = Depot.Adapter.Local.write(config, "public.txt", "Hello World", visibility: :public)
+      :ok = Depot.Adapter.Local.write(config, "private.txt", "Hello World", visibility: :private)
+
+      assert %{mode: mode} = Path.join(prefix, "public.txt") |> File.stat!()
+      assert match_mode(mode, 0o644)
+
+      assert %{mode: mode} = Path.join(prefix, "private.txt") |> File.stat!()
+      assert match_mode(mode, 0o600)
+    end
+
+    test "folder visibility", %{prefix: prefix} do
+      {_, config} = Depot.Adapter.Local.configure(prefix: prefix)
+
+      :ok =
+        Depot.Adapter.Local.write(config, "public/file.txt", "Hello World", visibility: :public)
+
+      :ok =
+        Depot.Adapter.Local.write(config, "private/file.txt", "Hello World",
+          directory_visibility: :private
+        )
+
+      assert %{mode: mode} = prefix |> File.stat!()
+      assert match_mode(mode, 0o755)
+
+      assert %{mode: mode} = Path.join(prefix, "public/") |> File.stat!()
+      assert match_mode(mode, 0o755)
+
+      assert %{mode: mode} = Path.join(prefix, "private/") |> File.stat!()
+      assert match_mode(mode, 0o700)
     end
   end
 

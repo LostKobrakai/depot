@@ -30,9 +30,9 @@ defmodule Depot do
 
   """
   @spec write(filesystem, Path.t(), iodata(), keyword()) :: :ok | {:error, term}
-  def write({adapter, config}, path, contents, _opts \\ []) do
+  def write({adapter, config}, path, contents, opts \\ []) do
     with {:ok, path} <- Depot.RelativePath.normalize(path) do
-      adapter.write(config, path, contents)
+      adapter.write(config, path, contents, opts)
     end
   end
 
@@ -192,10 +192,10 @@ defmodule Depot do
 
   """
   @spec move(filesystem, Path.t(), Path.t(), keyword()) :: :ok | {:error, term}
-  def move({adapter, config}, source, destination, _opts \\ []) do
+  def move({adapter, config}, source, destination, opts \\ []) do
     with {:ok, source} <- Depot.RelativePath.normalize(source),
          {:ok, destination} <- Depot.RelativePath.normalize(destination) do
-      adapter.move(config, source, destination)
+      adapter.move(config, source, destination, opts)
     end
   end
 
@@ -221,10 +221,10 @@ defmodule Depot do
 
   """
   @spec copy(filesystem, Path.t(), Path.t(), keyword()) :: :ok | {:error, term}
-  def copy({adapter, config}, source, destination, _opts \\ []) do
+  def copy({adapter, config}, source, destination, opts \\ []) do
     with {:ok, source} <- Depot.RelativePath.normalize(source),
          {:ok, destination} <- Depot.RelativePath.normalize(destination) do
-      adapter.copy(config, source, destination)
+      adapter.copy(config, source, destination, opts)
     end
   end
 
@@ -307,10 +307,10 @@ defmodule Depot do
 
   """
   @spec create_directory(filesystem, Path.t(), keyword()) :: :ok | {:error, term}
-  def create_directory({adapter, config}, path, _opts \\ []) do
+  def create_directory({adapter, config}, path, opts \\ []) do
     with {:ok, path} <- Depot.RelativePath.normalize(path),
          {:ok, path} <- Depot.RelativePath.assert_directory(path) do
-      adapter.create_directory(config, path)
+      adapter.create_directory(config, path, opts)
     end
   end
 
@@ -373,6 +373,20 @@ defmodule Depot do
   @spec clear(filesystem, keyword()) :: :ok | {:error, term}
   def clear({adapter, config}, _opts \\ []) do
     adapter.clear(config)
+  end
+
+  @spec set_visibility(filesystem, Path.t(), Depot.Visibility.t()) :: :ok | {:error, term}
+  def set_visibility({adapter, config}, path, visibility) do
+    with {:ok, path} <- Depot.RelativePath.normalize(path) do
+      adapter.set_visibility(config, path, visibility)
+    end
+  end
+
+  @spec visibility(filesystem, Path.t()) :: {:ok, Depot.Visibility.t()} | {:error, term}
+  def visibility({adapter, config}, path) do
+    with {:ok, path} <- Depot.RelativePath.normalize(path) do
+      adapter.visibility(config, path)
+    end
   end
 
   @doc """

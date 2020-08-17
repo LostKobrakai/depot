@@ -113,13 +113,14 @@ defmodule Depot.AdapterTest do
 
         {:ok, list} = Depot.list_contents(filesystem, ".")
 
-        assert length(list) == 4
         assert in_list(list, %Depot.Stat.Dir{name: "test"})
         assert in_list(list, %Depot.Stat.Dir{name: "folder"})
         assert in_list(list, %Depot.Stat.File{name: "test.txt"})
         assert in_list(list, %Depot.Stat.File{name: "test-1.txt"})
 
         refute in_list(list, %Depot.Stat.File{name: "folder/test-1.txt"})
+
+        assert length(list) == 4
       end
 
       test "user can create directories", %{filesystem: filesystem} do
@@ -165,6 +166,40 @@ defmodule Depot.AdapterTest do
         assert {:ok, :missing} = Depot.file_exists(filesystem, "test.txt")
         assert {:ok, :missing} = Depot.file_exists(filesystem, "test/test.txt")
         assert {:ok, :missing} = Depot.file_exists(filesystem, "test/")
+      end
+
+      test "set visibility", %{filesystem: filesystem} do
+        :ok =
+          Depot.write(filesystem, "folder/file.txt", "Hello World",
+            visibility: :public,
+            directory_visibility: :public
+          )
+
+        assert :ok = Depot.set_visibility(filesystem, "folder/", :private)
+        assert {:ok, :private} = Depot.visibility(filesystem, "folder/")
+
+        assert :ok = Depot.set_visibility(filesystem, "folder/file.txt", :private)
+        assert {:ok, :private} = Depot.visibility(filesystem, "folder/file.txt")
+      end
+
+      test "visibility", %{filesystem: filesystem} do
+        :ok =
+          Depot.write(filesystem, "public/file.txt", "Hello World",
+            visibility: :private,
+            directory_visibility: :public
+          )
+
+        :ok =
+          Depot.write(filesystem, "private/file.txt", "Hello World",
+            visibility: :public,
+            directory_visibility: :private
+          )
+
+        assert {:ok, :public} = Depot.visibility(filesystem, ".")
+        assert {:ok, :public} = Depot.visibility(filesystem, "public/")
+        assert {:ok, :private} = Depot.visibility(filesystem, "public/file.txt")
+        assert {:ok, :private} = Depot.visibility(filesystem, "private/")
+        assert {:ok, :public} = Depot.visibility(filesystem, "private/file.txt")
       end
     end
   end
