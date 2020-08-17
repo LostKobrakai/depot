@@ -442,7 +442,8 @@ defmodule Depot do
         {{adapter, config_destination}, path_destination} = destination,
         opts
       ) do
-    with :ok <- adapter.copy(config_source, path_source, config_destination, path_destination) do
+    with :ok <-
+           adapter.copy(config_source, path_source, config_destination, path_destination, opts) do
       :ok
     else
       {:error, :unsupported} -> copy_via_local_memory(source, destination, opts)
