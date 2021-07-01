@@ -15,12 +15,14 @@ defmodule Depot.Adapter.InMemoryTest do
 
       start_supervised(filesystem)
 
-      :ok = Depot.Adapter.InMemory.write(config, "test.txt", "Hello World")
+      :ok = Depot.Adapter.InMemory.write(config, "test.txt", "Hello World", [])
 
-      assert {:ok, "Hello World"} =
+      assert {:ok, {"Hello World", _meta}} =
                Agent.get(via(test), fn state ->
                  state
+                 |> elem(0)
                  |> Map.fetch!("/")
+                 |> elem(0)
                  |> Map.fetch("test.txt")
                end)
     end
@@ -30,7 +32,7 @@ defmodule Depot.Adapter.InMemoryTest do
 
       start_supervised(filesystem)
 
-      :ok = Depot.Adapter.InMemory.write(config, "folder/test.txt", "Hello World")
+      :ok = Depot.Adapter.InMemory.write(config, "folder/test.txt", "Hello World", [])
 
       assert {:ok, "Hello World"} = Depot.Adapter.InMemory.read(config, "folder/test.txt")
     end
@@ -42,7 +44,10 @@ defmodule Depot.Adapter.InMemoryTest do
 
       start_supervised(filesystem)
 
-      :ok = Agent.update(via(test), fn _state -> %{"/" => %{"test.txt" => "Hello World"}} end)
+      :ok =
+        Agent.update(via(test), fn _state ->
+          {%{"/" => {%{"test.txt" => {"Hello World", %{}}}, %{}}}, %{}}
+        end)
 
       assert {:ok, "Hello World"} = Depot.Adapter.InMemory.read(config, "test.txt")
     end
@@ -52,7 +57,10 @@ defmodule Depot.Adapter.InMemoryTest do
 
       start_supervised(filesystem)
 
-      :ok = Agent.update(via(test), fn _state -> %{"/" => %{"test.txt" => "Hello World"}} end)
+      :ok =
+        Agent.update(via(test), fn _state ->
+          {%{"/" => {%{"test.txt" => {"Hello World", %{}}}, %{}}}, %{}}
+        end)
 
       assert {:ok, %Depot.Adapter.InMemory.AgentStream{} = stream} =
                Depot.Adapter.InMemory.read_stream(config, "test.txt", [])
@@ -67,14 +75,19 @@ defmodule Depot.Adapter.InMemoryTest do
 
       start_supervised(filesystem)
 
-      :ok = Agent.update(via(test), fn _state -> %{"/" => %{"test.txt" => "Hello World"}} end)
+      :ok =
+        Agent.update(via(test), fn _state ->
+          {%{"/" => {%{"test.txt" => {"Hello World", %{}}}, %{}}}, %{}}
+        end)
 
       assert :ok = Depot.Adapter.InMemory.delete(config, "test.txt")
 
       assert :error =
                Agent.get(via(test), fn state ->
                  state
+                 |> elem(0)
                  |> Map.fetch!("/")
+                 |> elem(0)
                  |> Map.fetch("test.txt")
                end)
     end
@@ -85,13 +98,6 @@ defmodule Depot.Adapter.InMemoryTest do
       start_supervised(filesystem)
 
       assert :ok = Depot.Adapter.InMemory.delete(config, "test.txt")
-
-      assert :error =
-               Agent.get(via(test), fn state ->
-                 state
-                 |> Map.fetch!("/")
-                 |> Map.fetch("test.txt")
-               end)
     end
   end
 

@@ -23,6 +23,22 @@ LocalFileSystem.write("test.txt", "Hello World")
 {:ok, "Hello World"} = LocalFileSystem.read("test.txt")
 ```
 
+## Visibility
+
+Depot does by default only deal with a limited, but portable, set of visibility permissions:
+
+- `:public`
+- `:private`
+
+For more details and how to apply custom visibility permissions take a look at `Depot.Visibility`
+
+## Options
+
+  The following write options apply to all adapters:
+
+  * `:visibility` - Set the visibility for files written
+  * `:directory_visibility` - Set the visibility for directories written (if applicable)
+
 <!-- MDOC !-->
 
 ## Installation

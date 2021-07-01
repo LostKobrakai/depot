@@ -63,7 +63,7 @@ defmodule Depot.Adapter.InMemory do
 
           list, :done ->
             contents = original <> IO.iodata_to_binary(:lists.reverse(list))
-            Depot.Adapter.InMemory.write(config, path, contents)
+            Depot.Adapter.InMemory.write(config, path, contents, [])
             stream
 
           _, :halt ->
@@ -92,7 +92,7 @@ defmodule Depot.Adapter.InMemory do
   end
 
   def start_link(%Config{} = config) do
-    Agent.start_link(fn -> %{} end, name: Depot.Registry.via(__MODULE__, config.name))
+    Agent.start_link(fn -> {%{}, %{}} end, name: Depot.Registry.via(__MODULE__, config.name))
   end
 
   @impl Depot.Adapter
@@ -105,9 +105,14 @@ defmodule Depot.Adapter.InMemory do
   end
 
   @impl Depot.Adapter
-  def write(config, path, contents) do
+  def write(config, path, contents, opts) do
+    visibility = Keyword.get(opts, :visibility, :private)
+    directory_visibility = Keyword.get(opts, :directory_visibility, :private)
+
     Agent.update(Depot.Registry.via(__MODULE__, config.name), fn state ->
-      put_in(state, accessor(path, %{}), IO.iodata_to_binary(contents))
+      file = {IO.iodata_to_binary(contents), %{visibility: visibility}}
+      directory = {%{}, %{visibility: directory_visibility}}
+      put_in(state, accessor(path, directory), file)
     end)
   end
 
@@ -125,7 +130,7 @@ defmodule Depot.Adapter.InMemory do
   def read(config, path) do
     Agent.get(Depot.Registry.via(__MODULE__, config.name), fn state ->
       case get_in(state, accessor(path)) do
-        binary when is_binary(binary) -> {:ok, binary}
+        {binary, _meta} when is_binary(binary) -> {:ok, binary}
         _ -> {:error, :enoent}
       end
     end)
@@ -152,12 +157,18 @@ defmodule Depot.Adapter.InMemory do
   end
 
   @impl Depot.Adapter
-  def move(%Config{} = config, source, destination) do
+  def move(%Config{} = config, source, destination, opts) do
+    visibility = Keyword.get(opts, :visibility, :private)
+    directory_visibility = Keyword.get(opts, :directory_visibility, :private)
+
     Agent.get_and_update(Depot.Registry.via(__MODULE__, config.name), fn state ->
       case get_in(state, accessor(source)) do
-        binary when is_binary(binary) ->
+        {binary, _meta} when is_binary(binary) ->
+          file = {binary, %{visibility: visibility}}
+          directory = {%{}, %{visibility: directory_visibility}}
+
           {_, state} =
-            state |> put_in(accessor(destination, %{}), binary) |> pop_in(accessor(source))
+            state |> put_in(accessor(destination, directory), file) |> pop_in(accessor(source))
 
           {:ok, state}
 
@@ -168,17 +179,31 @@ defmodule Depot.Adapter.InMemory do
   end
 
   @impl Depot.Adapter
-  def copy(%Config{} = config, source, destination) do
+  def copy(%Config{} = config, source, destination, opts) do
+    visibility = Keyword.get(opts, :visibility, :private)
+    directory_visibility = Keyword.get(opts, :directory_visibility, :private)
+
     Agent.get_and_update(Depot.Registry.via(__MODULE__, config.name), fn state ->
       case get_in(state, accessor(source)) do
-        binary when is_binary(binary) -> {:ok, put_in(state, accessor(destination, %{}), binary)}
-        _ -> {{:error, :enoent}, state}
+        {binary, _meta} when is_binary(binary) ->
+          file = {binary, %{visibility: visibility}}
+          directory = {%{}, %{visibility: directory_visibility}}
+          {:ok, put_in(state, accessor(destination, directory), file)}
+
+        _ ->
+          {{:error, :enoent}, state}
       end
     end)
   end
 
   @impl Depot.Adapter
-  def copy(%Config{} = _source_config, _source, %Config{} = _destination_config, _destination) do
+  def copy(
+        %Config{} = _source_config,
+        _source,
+        %Config{} = _destination_config,
+        _destination,
+        _opts
+      ) do
     {:error, :unsupported}
   end
 
@@ -186,7 +211,7 @@ defmodule Depot.Adapter.InMemory do
   def file_exists(%Config{} = config, path) do
     Agent.get(Depot.Registry.via(__MODULE__, config.name), fn state ->
       case get_in(state, accessor(path)) do
-        binary when is_binary(binary) -> {:ok, :exists}
+        {binary, _meta} when is_binary(binary) -> {:ok, :exists}
         _ -> {:ok, :missing}
       end
     end)
@@ -198,20 +223,20 @@ defmodule Depot.Adapter.InMemory do
       Agent.get(Depot.Registry.via(__MODULE__, config.name), fn state ->
         paths =
           case get_in(state, accessor(path)) do
-            %{} = map -> map
+            {%{} = map, _meta} -> map
             _ -> %{}
           end
 
         for {path, x} <- paths do
           case x do
-            %{} ->
+            {%{}, _meta} ->
               %Depot.Stat.Dir{
                 name: path,
                 size: 0,
                 mtime: 0
               }
 
-            bin when is_binary(bin) ->
+            {bin, _meta} when is_binary(bin) ->
               %Depot.Stat.File{
                 name: path,
                 size: byte_size(bin),
@@ -225,9 +250,12 @@ defmodule Depot.Adapter.InMemory do
   end
 
   @impl Depot.Adapter
-  def create_directory(%Config{} = config, path) do
+  def create_directory(%Config{} = config, path, opts) do
+    directory_visibility = Keyword.get(opts, :directory_visibility, :private)
+    directory = {%{}, %{visibility: directory_visibility}}
+
     Agent.update(Depot.Registry.via(__MODULE__, config.name), fn state ->
-      put_in(state, accessor(path, %{}), %{})
+      put_in(state, accessor(path, directory), directory)
     end)
   end
 
@@ -240,7 +268,7 @@ defmodule Depot.Adapter.InMemory do
         {_, nil} ->
           {:ok, state}
 
-        {recursive?, map} when is_map(map) and (map_size(map) == 0 or recursive?) ->
+        {recursive?, {map, _meta}} when is_map(map) and (map_size(map) == 0 or recursive?) ->
           {_, state} = pop_in(state, accessor(path))
           {:ok, state}
 
@@ -252,7 +280,35 @@ defmodule Depot.Adapter.InMemory do
 
   @impl Depot.Adapter
   def clear(%Config{} = config) do
-    Agent.update(Depot.Registry.via(__MODULE__, config.name), fn _ -> %{} end)
+    Agent.update(Depot.Registry.via(__MODULE__, config.name), fn _ -> {%{}, %{}} end)
+  end
+
+  @impl Depot.Adapter
+  def set_visibility(%Config{} = config, path, visibility) do
+    Agent.get_and_update(Depot.Registry.via(__MODULE__, config.name), fn state ->
+      case get_in(state, accessor(path)) do
+        {_, _} ->
+          state =
+            update_in(state, accessor(path), fn {contents, meta} ->
+              {contents, Map.put(meta, :visibility, visibility)}
+            end)
+
+          {:ok, state}
+
+        _ ->
+          {{:error, :enoent}, state}
+      end
+    end)
+  end
+
+  @impl Depot.Adapter
+  def visibility(%Config{} = config, path) do
+    Agent.get(Depot.Registry.via(__MODULE__, config.name), fn state ->
+      case get_in(state, accessor(path)) do
+        {_, %{visibility: visibility}} -> {:ok, visibility}
+        _ -> {:error, :enoent}
+      end
+    end)
   end
 
   defp accessor(path, default \\ nil) when is_binary(path) do
@@ -264,10 +320,11 @@ defmodule Depot.Adapter.InMemory do
   end
 
   defp do_accessor([segment], acc, default) do
-    [Access.key(segment, default) | acc]
+    [Access.key(segment, default), Access.elem(0) | acc]
   end
 
   defp do_accessor([segment | rest], acc, default) do
-    do_accessor(rest, [Access.key(segment, %{}) | acc], default)
+    intermediate_default = default || {%{}, %{}}
+    do_accessor(rest, [Access.key(segment, intermediate_default), Access.elem(0) | acc], default)
   end
 end
